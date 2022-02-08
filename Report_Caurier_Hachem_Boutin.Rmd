@@ -1,0 +1,209 @@
+---
+title: "REPORT"
+subtitle: "HACKATHON"
+author: Boutin Maxime, Caurier Grégoire, Hachem Mohamad
+date: "`r format(Sys.time())`" 
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+    toc_float: true
+    theme: cerulean
+    highlight: espresso
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Operation on the dataset 
+
+## Load libraries 
+```{r}
+library(data.table)
+library(rpart)
+library(ggplot2)
+library(RColorBrewer)
+library(rattle)
+library(caTools)
+library(doParallel)
+library(mlbench)
+library(xgboost)
+library(readr)
+library(corrplot)
+```
+
+```{r}
+dataset <- read.csv('D:/A4/Machine Learning/Hackaton/data.csv')
+head(dataset)
+
+```
+
+##data visualization of the problem
+```{r}
+numeric_data = dataset[,c(1,11,12,13,14,16,17,18,19)]
+
+cor(x = numeric_data, use = "everything")
+corrplot.mixed(corr = cor(x = numeric_data, use = "everything"))
+
+#with this we tried to remove the next variables even if the model was alway the best with all of them
+# dataset=dataset[,-16]
+# dataset=dataset[,-10]
+# dataset=dataset[,-9]
+# dataset=dataset[,-8]
+# dataset=dataset[,-3]
+
+```
+
+
+## Put the categorical values as factor 
+```{r}
+dataset$job=as.factor(dataset$job)
+dataset$marital=as.factor(dataset$marital)
+dataset$education=as.factor(dataset$education)
+dataset$default=as.factor(dataset$default)
+dataset$housing=as.factor(dataset$housing)
+dataset$loan=as.factor(dataset$loan)
+dataset$contact=as.factor(dataset$contact)
+dataset$day_of_week=as.factor(dataset$day_of_week)
+dataset$poutcome=as.factor(dataset$poutcome)
+dataset$y=as.factor(dataset$y)
+```
+
+## In order to proceed we will now devide our main data into a training set and a testing set where we will build our models on our training set then check it's accurancy on our test set. Note : we will set a seed in order to have to same answers.
+```{r}
+set.seed(123) 
+split = sample.split(dataset$y, SplitRatio = 0.66)
+traindata = subset(dataset, split == TRUE)
+testdata = subset(dataset, split == FALSE)
+```
+
+# we will start now by creating our models 
+
+#after looking at our data we can conclude that the prediction model that we are trying to build should be a classification model since our final output will be a 1 - 0 / yes - no / the customer will subscribe - no the customer will not subscribe
+
+
+## Logistic regression
+```{r}
+library(caret)
+
+traindata=as.data.frame(traindata)
+
+ctrl <- trainControl(method = "cv", number = 10, repeats=5)
+
+
+
+fit.Glm1<- train(y~.,
+                 data=traindata,
+                 method="glm",
+                 
+                 trControl = ctrl)
+print(fit.Glm1)
+print(confusionMatrix(testdata$y,predict(fit.Glm1,testdata),mode = "prec_recall")
+)
+```
+
+## Random Forest : In order to Proceed we had no choice but to divide our dataset into a smaller one to perform Random Forest model because it take too much time to perform on the 20 000 lines of the data.
+```{r}
+dataset2=dataset[1:3000,]
+
+set.seed(123) # CHANGE THE VALUE OF SEED. PUT YOUR STUDENT'S NUMBER INSTEAD OF 123.
+split2 = sample.split(dataset2$y, SplitRatio = 0.66)
+traindata2 = subset(dataset2, split2 == TRUE)
+testdata2 = subset(dataset2, split2 == FALSE)
+
+traindata2=as.data.frame(traindata2)
+
+library(partykit)
+library(randomForest)
+set.seed(1)
+fit.forest1<- train(y~.,
+                    data=traindata2,
+                    method="rf",
+                    
+                    trControl = ctrl)
+print(fit.forest1)
+print(confusionMatrix(testdata2$y,predict(fit.forest1,testdata2),mode = "prec_recall")
+)
+
+
+```
+
+## GBM : same process as random forest
+```{r}
+
+fit.Gboost1<- train(y~.,
+                    data=traindata2,
+                    method="gbm",
+                    
+                    trControl = ctrl)
+print(fit.Gboost1)
+print(confusionMatrix(testdata2$y,predict(fit.Gboost1,testdata2),mode = "prec_recall")
+)
+
+
+```
+
+
+##LDA we also tried to create an LDA model
+```{r}
+library(MASS)
+classifier.lda <- lda(y~., data=traindata)
+classifier.lda
+pred.lda = predict(classifier.lda, newdata = testdata[,-21])
+cm2 = table(testdata$y,pred.lda$class)
+cm2
+mosaicplot(cm2,col=sample(2:3,2)) 
+accuracy2 = (cm2[1,1]+cm2[2,2])/sum(cm2)
+accuracy2
+```
+
+##Other version of the random Forest
+```{r}
+library(randomForest)
+random_forest = randomForest(y~., data = traindata2 ,mtry = 3,importance = TRUE, ntrees = 500)
+random_forest_pred = predict(random_forest ,newdata =testdata2)
+print(confusionMatrix(testdata2$y,predict(random_forest,testdata2,mode = "prec_recall")))
+```
+
+## while being in the hackathon we were able to go from a low accurancy to reach a final of 0.92300. to be able to acheive such results we had to take many things into considerations such as the corrolation between the variables, the different classifactionals models, the training data ,  removing/adding/imporoving variables.
+
+##Best Model
+```{r}
+test=read.csv("D:/A4/Machine Learning/Hackaton/test.csv")
+test$job=as.factor(test$job)
+test$marital=as.factor(test$marital)
+test$education=as.factor(test$education)
+test$default=as.factor(test$default)
+test$housing=as.factor(test$housing)
+test$loan=as.factor(test$loan)
+test$contact=as.factor(test$contact)
+test$day_of_week=as.factor(test$day_of_week)
+test$poutcome=as.factor(test$poutcome)
+
+
+
+predictions=predict(fit.Gboost1,newdata = test)
+print(predictions)
+to_be_submitted = data.frame(id=rownames(test), y=predictions)
+write.csv(to_be_submitted , file = "D:/A4/Machine Learning/Hackaton/to_be_submitted.csv", row.names = F)
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
